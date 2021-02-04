@@ -164,12 +164,28 @@ namespace Quartz.Impl.AdoJobStore
 
         public virtual ITriggerPersistenceDelegate? FindTriggerPersistenceDelegate(IOperableTrigger trigger)
         {
-            return triggerPersistenceDelegates.FirstOrDefault(del => del.CanHandleTriggerType(trigger));
+            foreach (var del in triggerPersistenceDelegates)
+            {
+                if (del.CanHandleTriggerType(trigger))
+                {
+                    return del;
+                }
+            }
+
+            return null;
         }
 
         public virtual ITriggerPersistenceDelegate? FindTriggerPersistenceDelegate(string discriminator)
         {
-            return triggerPersistenceDelegates.FirstOrDefault(del => del.GetHandledTriggerTypeDiscriminator() == discriminator);
+            foreach (var del in triggerPersistenceDelegates)
+            {
+                if (del.GetHandledTriggerTypeDiscriminator() == discriminator)
+                {
+                    return del;
+                }
+            }
+
+            return null;
         }
 
         //---------------------------------------------------------------------------
@@ -192,14 +208,12 @@ namespace Quartz.Impl.AdoJobStore
             string oldState2,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateTriggerStatesFromOtherStates)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "newState", newState);
-                AddCommandParameter(cmd, "oldState1", oldState1);
-                AddCommandParameter(cmd, "oldState2", oldState2);
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateTriggerStatesFromOtherStates));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "newState", newState);
+            AddCommandParameter(cmd, "oldState1", oldState1);
+            AddCommandParameter(cmd, "oldState2", oldState2);
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -214,22 +228,18 @@ namespace Quartz.Impl.AdoJobStore
             DateTimeOffset ts,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectMisfiredTriggers)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectMisfiredTriggers));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "timestamp", GetDbDateTimeValue(ts));
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            List<TriggerKey> list = new List<TriggerKey>();
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "timestamp", GetDbDateTimeValue(ts));
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    List<TriggerKey> list = new List<TriggerKey>();
-                    while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        string triggerName = rs.GetString(ColumnTriggerName)!;
-                        string groupName = rs.GetString(ColumnTriggerGroup)!;
-                        list.Add(new TriggerKey(triggerName, groupName));
-                    }
-                    return list;
-                }
+                string triggerName = rs.GetString(ColumnTriggerName)!;
+                string groupName = rs.GetString(ColumnTriggerGroup)!;
+                list.Add(new TriggerKey(triggerName, groupName));
             }
+            return list;
         }
 
         /// <summary>
@@ -244,21 +254,17 @@ namespace Quartz.Impl.AdoJobStore
             string state,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTriggersInState)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTriggersInState));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "state", state);
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            List<TriggerKey> list = new List<TriggerKey>();
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "state", state);
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    List<TriggerKey> list = new List<TriggerKey>();
-                    while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        list.Add(new TriggerKey(rs.GetString(0), rs.GetString(1)));
-                    }
-
-                    return list;
-                }
+                list.Add(new TriggerKey(rs.GetString(0), rs.GetString(1)));
             }
+
+            return list;
         }
 
         /// <summary>
@@ -276,24 +282,20 @@ namespace Quartz.Impl.AdoJobStore
             DateTimeOffset ts,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectMisfiredTriggersInState)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "timestamp", GetDbDateTimeValue(ts));
-                AddCommandParameter(cmd, "state", state);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectMisfiredTriggersInState));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "timestamp", GetDbDateTimeValue(ts));
+            AddCommandParameter(cmd, "state", state);
 
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    List<TriggerKey> list = new List<TriggerKey>();
-                    while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        string triggerName = rs.GetString(ColumnTriggerName)!;
-                        string groupName = rs.GetString(ColumnTriggerGroup)!;
-                        list.Add(new TriggerKey(triggerName, groupName));
-                    }
-                    return list;
-                }
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            List<TriggerKey> list = new List<TriggerKey>();
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                string triggerName = rs.GetString(ColumnTriggerName)!;
+                string groupName = rs.GetString(ColumnTriggerGroup)!;
+                list.Add(new TriggerKey(triggerName, groupName));
             }
+            return list;
         }
 
         /// <summary>
@@ -320,31 +322,29 @@ namespace Quartz.Impl.AdoJobStore
         {
             // always take one more than count so that hasReachedLimit will work properly
             var sql = ReplaceTablePrefix(GetSelectNextMisfiredTriggersInStateToAcquireSql(count != -1 ? count + 1 : count));
-            using (var cmd = PrepareCommand(conn, sql))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "nextFireTime", GetDbDateTimeValue(ts));
-                AddCommandParameter(cmd, "state1", state1);
+            using var cmd = PrepareCommand(conn, sql);
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "nextFireTime", GetDbDateTimeValue(ts));
+            AddCommandParameter(cmd, "state1", state1);
 
-                DbDataReader rs;
-                using (rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+            DbDataReader rs;
+            using (rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+            {
+                bool hasReachedLimit = false;
+                while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false) && !hasReachedLimit)
                 {
-                    bool hasReachedLimit = false;
-                    while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false) && !hasReachedLimit)
+                    if (resultList.Count == count)
                     {
-                        if (resultList.Count == count)
-                        {
-                            hasReachedLimit = true;
-                        }
-                        else
-                        {
-                            string triggerName = rs.GetString(ColumnTriggerName)!;
-                            string groupName = rs.GetString(ColumnTriggerGroup)!;
-                            resultList.Add(new TriggerKey(triggerName, groupName));
-                        }
+                        hasReachedLimit = true;
                     }
-                    return hasReachedLimit;
+                    else
+                    {
+                        string triggerName = rs.GetString(ColumnTriggerName)!;
+                        string groupName = rs.GetString(ColumnTriggerGroup)!;
+                        resultList.Add(new TriggerKey(triggerName, groupName));
+                    }
                 }
+                return hasReachedLimit;
             }
         }
 
@@ -369,21 +369,17 @@ namespace Quartz.Impl.AdoJobStore
             DateTimeOffset ts,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlCountMisfiredTriggersInStates)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlCountMisfiredTriggersInStates));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "nextFireTime", GetDbDateTimeValue(ts));
+            AddCommandParameter(cmd, "state1", state1);
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "nextFireTime", GetDbDateTimeValue(ts));
-                AddCommandParameter(cmd, "state1", state1);
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        return Convert.ToInt32(rs.GetValue(0), CultureInfo.InvariantCulture);
-                    }
-                }
-
-                throw new Exception("No misfired trigger count returned.");
+                return Convert.ToInt32(rs.GetValue(0), CultureInfo.InvariantCulture);
             }
+
+            throw new Exception("No misfired trigger count returned.");
         }
 
         /// <summary>
@@ -403,24 +399,20 @@ namespace Quartz.Impl.AdoJobStore
             DateTimeOffset ts,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectMisfiredTriggersInGroupInState)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "timestamp", GetDbDateTimeValue(ts));
-                AddCommandParameter(cmd, "triggerGroup", groupName);
-                AddCommandParameter(cmd, "state", state);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectMisfiredTriggersInGroupInState));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "timestamp", GetDbDateTimeValue(ts));
+            AddCommandParameter(cmd, "triggerGroup", groupName);
+            AddCommandParameter(cmd, "state", state);
 
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    List<TriggerKey> list = new List<TriggerKey>();
-                    while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        string triggerName = rs.GetString(ColumnTriggerName)!;
-                        list.Add(new TriggerKey(triggerName, groupName));
-                    }
-                    return list;
-                }
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            List<TriggerKey> list = new List<TriggerKey>();
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                string triggerName = rs.GetString(ColumnTriggerName)!;
+                list.Add(new TriggerKey(triggerName, groupName));
             }
+            return list;
         }
 
         /// <summary>
@@ -515,12 +507,10 @@ namespace Quartz.Impl.AdoJobStore
             ConnectionAndTransactionHolder conn,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeleteFiredTriggers)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeleteFiredTriggers));
+            AddCommandParameter(cmd, "schedulerName", schedName);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -535,12 +525,10 @@ namespace Quartz.Impl.AdoJobStore
             string instanceName,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeleteInstancesFiredTriggers)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "instanceName", instanceName);
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeleteInstancesFiredTriggers));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "instanceName", instanceName);
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -603,30 +591,28 @@ namespace Quartz.Impl.AdoJobStore
 
             int insertResult;
 
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlInsertJobDetail)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlInsertJobDetail));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "jobName", job.Key.Name);
+            AddCommandParameter(cmd, "jobGroup", job.Key.Group);
+            AddCommandParameter(cmd, "jobDescription", job.Description);
+            AddCommandParameter(cmd, "jobType", GetStorableJobTypeName(job.JobType));
+            AddCommandParameter(cmd, "jobDurable", GetDbBooleanValue(job.Durable));
+            AddCommandParameter(cmd, "jobVolatile", GetDbBooleanValue(job.ConcurrentExecutionDisallowed));
+            AddCommandParameter(cmd, "jobStateful", GetDbBooleanValue(job.PersistJobDataAfterExecution));
+            AddCommandParameter(cmd, "jobRequestsRecovery", GetDbBooleanValue(job.RequestsRecovery));
+
+            string paramName = "jobDataMap";
+            if (baos != null)
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "jobName", job.Key.Name);
-                AddCommandParameter(cmd, "jobGroup", job.Key.Group);
-                AddCommandParameter(cmd, "jobDescription", job.Description);
-                AddCommandParameter(cmd, "jobType", GetStorableJobTypeName(job.JobType));
-                AddCommandParameter(cmd, "jobDurable", GetDbBooleanValue(job.Durable));
-                AddCommandParameter(cmd, "jobVolatile", GetDbBooleanValue(job.ConcurrentExecutionDisallowed));
-                AddCommandParameter(cmd, "jobStateful", GetDbBooleanValue(job.PersistJobDataAfterExecution));
-                AddCommandParameter(cmd, "jobRequestsRecovery", GetDbBooleanValue(job.RequestsRecovery));
-
-                string paramName = "jobDataMap";
-                if (baos != null)
-                {
-                    AddCommandParameter(cmd, paramName, baos, DbProvider.Metadata.DbBinaryType);
-                }
-                else
-                {
-                    AddCommandParameter(cmd, paramName, null, DbProvider.Metadata.DbBinaryType);
-                }
-
-                insertResult = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                AddCommandParameter(cmd, paramName, baos, DbProvider.Metadata.DbBinaryType);
             }
+            else
+            {
+                AddCommandParameter(cmd, paramName, null, DbProvider.Metadata.DbBinaryType);
+            }
+
+            insertResult = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
             return insertResult;
         }
@@ -738,23 +724,21 @@ namespace Quartz.Impl.AdoJobStore
         {
             byte[]? baos = SerializeJobData(job.JobDataMap);
 
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateJobDetail)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "jobDescription", job.Description);
-                AddCommandParameter(cmd, "jobType", GetStorableJobTypeName(job.JobType));
-                AddCommandParameter(cmd, "jobDurable", GetDbBooleanValue(job.Durable));
-                AddCommandParameter(cmd, "jobVolatile", GetDbBooleanValue(job.ConcurrentExecutionDisallowed));
-                AddCommandParameter(cmd, "jobStateful", GetDbBooleanValue(job.PersistJobDataAfterExecution));
-                AddCommandParameter(cmd, "jobRequestsRecovery", GetDbBooleanValue(job.RequestsRecovery));
-                AddCommandParameter(cmd, "jobDataMap", baos, DbProvider.Metadata.DbBinaryType);
-                AddCommandParameter(cmd, "jobName", job.Key.Name);
-                AddCommandParameter(cmd, "jobGroup", job.Key.Group);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateJobDetail));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "jobDescription", job.Description);
+            AddCommandParameter(cmd, "jobType", GetStorableJobTypeName(job.JobType));
+            AddCommandParameter(cmd, "jobDurable", GetDbBooleanValue(job.Durable));
+            AddCommandParameter(cmd, "jobVolatile", GetDbBooleanValue(job.ConcurrentExecutionDisallowed));
+            AddCommandParameter(cmd, "jobStateful", GetDbBooleanValue(job.PersistJobDataAfterExecution));
+            AddCommandParameter(cmd, "jobRequestsRecovery", GetDbBooleanValue(job.RequestsRecovery));
+            AddCommandParameter(cmd, "jobDataMap", baos, DbProvider.Metadata.DbBinaryType);
+            AddCommandParameter(cmd, "jobName", job.Key.Name);
+            AddCommandParameter(cmd, "jobGroup", job.Key.Group);
 
-                int insertResult = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            int insertResult = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
-                return insertResult;
-            }
+            return insertResult;
         }
 
         /// <summary>
@@ -769,23 +753,19 @@ namespace Quartz.Impl.AdoJobStore
             JobKey jobKey,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTriggersForJob)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTriggersForJob));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "jobName", jobKey.Name);
+            AddCommandParameter(cmd, "jobGroup", jobKey.Group);
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            List<TriggerKey> list = new List<TriggerKey>(10);
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "jobName", jobKey.Name);
-                AddCommandParameter(cmd, "jobGroup", jobKey.Group);
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    List<TriggerKey> list = new List<TriggerKey>(10);
-                    while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        string trigName = rs.GetString(ColumnTriggerName)!;
-                        string trigGroup = rs.GetString(ColumnTriggerGroup)!;
-                        list.Add(new TriggerKey(trigName, trigGroup));
-                    }
-                    return list;
-                }
+                string trigName = rs.GetString(ColumnTriggerName)!;
+                string trigGroup = rs.GetString(ColumnTriggerGroup)!;
+                list.Add(new TriggerKey(trigName, trigGroup));
             }
+            return list;
         }
 
         /// <summary>
@@ -800,17 +780,15 @@ namespace Quartz.Impl.AdoJobStore
             JobKey jobKey,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeleteJobDetail)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeleteJobDetail));
+            if (logger.IsDebugEnabled())
             {
-                if (logger.IsDebugEnabled())
-                {
-                    logger.Debug("Deleting job: " + jobKey);
-                }
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "jobName", jobKey.Name);
-                AddCommandParameter(cmd, "jobGroup", jobKey.Group);
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                logger.Debug("Deleting job: " + jobKey);
             }
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "jobName", jobKey.Name);
+            AddCommandParameter(cmd, "jobGroup", jobKey.Group);
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -827,20 +805,18 @@ namespace Quartz.Impl.AdoJobStore
             JobKey jobKey,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectJobNonConcurrent)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectJobNonConcurrent));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "jobName", jobKey.Name);
+            AddCommandParameter(cmd, "jobGroup", jobKey.Group);
+
+            var o = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            if (o is not null)
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "jobName", jobKey.Name);
-                AddCommandParameter(cmd, "jobGroup", jobKey.Group);
-
-                var o = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-                if (o is not null)
-                {
-                    return (bool) o;
-                }
-
-                return false;
+                return (bool) o;
             }
+
+            return false;
         }
 
         /// <summary>
@@ -855,21 +831,17 @@ namespace Quartz.Impl.AdoJobStore
             JobKey jobKey,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectJobExistence)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectJobExistence));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "jobName", jobKey.Name);
+            AddCommandParameter(cmd, "jobGroup", jobKey.Group);
+            using var dr = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (await dr.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "jobName", jobKey.Name);
-                AddCommandParameter(cmd, "jobGroup", jobKey.Group);
-                using (var dr = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    if (await dr.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        return true;
-                    }
-
-                    return false;
-                }
+                return true;
             }
+
+            return false;
         }
 
         /// <summary>
@@ -886,15 +858,13 @@ namespace Quartz.Impl.AdoJobStore
         {
             byte[]? baos = SerializeJobData(job.JobDataMap);
 
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateJobData)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "jobDataMap", baos, DbProvider.Metadata.DbBinaryType);
-                AddCommandParameter(cmd, "jobName", job.Key.Name);
-                AddCommandParameter(cmd, "jobGroup", job.Key.Group);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateJobData));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "jobDataMap", baos, DbProvider.Metadata.DbBinaryType);
+            AddCommandParameter(cmd, "jobName", job.Key.Name);
+            AddCommandParameter(cmd, "jobGroup", job.Key.Group);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -911,37 +881,33 @@ namespace Quartz.Impl.AdoJobStore
             ITypeLoadHelper loadHelper,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectJobDetail)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectJobDetail));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "jobName", jobKey.Name);
+            AddCommandParameter(cmd, "jobGroup", jobKey.Group);
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            JobDetailImpl? job = null;
+
+            if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "jobName", jobKey.Name);
-                AddCommandParameter(cmd, "jobGroup", jobKey.Group);
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+                job = new JobDetailImpl();
+
+                job.Name = rs.GetString(ColumnJobName)!;
+                job.Group = rs.GetString(ColumnJobGroup)!;
+                job.Description = rs.GetString(ColumnDescription);
+                job.JobType = loadHelper.LoadType(rs.GetString(ColumnJobClass)!)!;
+                job.Durable = GetBooleanFromDbValue(rs[ColumnIsDurable]);
+                job.RequestsRecovery = GetBooleanFromDbValue(rs[ColumnRequestsRecovery]);
+
+                IDictionary? map = await ReadMapFromReader(rs, 6).ConfigureAwait(false);
+
+                if (map != null)
                 {
-                    JobDetailImpl? job = null;
-
-                    if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        job = new JobDetailImpl();
-
-                        job.Name = rs.GetString(ColumnJobName)!;
-                        job.Group = rs.GetString(ColumnJobGroup)!;
-                        job.Description = rs.GetString(ColumnDescription);
-                        job.JobType = loadHelper.LoadType(rs.GetString(ColumnJobClass)!)!;
-                        job.Durable = GetBooleanFromDbValue(rs[ColumnIsDurable]);
-                        job.RequestsRecovery = GetBooleanFromDbValue(rs[ColumnRequestsRecovery]);
-
-                        IDictionary? map = await ReadMapFromReader(rs, 6).ConfigureAwait(false);
-
-                        if (map != null)
-                        {
-                            job.JobDataMap = new JobDataMap(map);
-                        }
-                    }
-
-                    return job;
+                    job.JobDataMap = new JobDataMap(map);
                 }
             }
+
+            return job;
         }
 
         private async Task<IDictionary?> ReadMapFromReader(DbDataReader rs, int colIndex)
@@ -1033,20 +999,16 @@ namespace Quartz.Impl.AdoJobStore
             ConnectionAndTransactionHolder conn,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectJobGroups)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectJobGroups));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            List<string> list = new List<string>();
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    List<string> list = new List<string>();
-                    while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        list.Add(rs.GetString(0));
-                    }
-
-                    return list;
-                }
+                list.Add(rs.GetString(0));
             }
+
+            return list;
         }
 
         /// <summary>
@@ -1074,21 +1036,17 @@ namespace Quartz.Impl.AdoJobStore
                 parameter = ToSqlLikeClause(matcher);
             }
 
-            using (var cmd = PrepareCommand(conn, sql))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "jobGroup", parameter);
+            using var cmd = PrepareCommand(conn, sql);
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "jobGroup", parameter);
 
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    var list = new HashSet<JobKey>();
-                    while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        list.Add(new JobKey(rs.GetString(0), rs.GetString(1)));
-                    }
-                    return list;
-                }
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            var list = new HashSet<JobKey>();
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                list.Add(new JobKey(rs.GetString(0), rs.GetString(1)));
             }
+            return list;
         }
 
         protected bool IsMatcherEquals<T>(GroupMatcher<T> matcher) where T : Key<T>
@@ -1157,55 +1115,53 @@ namespace Quartz.Impl.AdoJobStore
                 baos = SerializeJobData(trigger.JobDataMap);
             }
 
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlInsertTrigger)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlInsertTrigger));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerName", trigger.Key.Name);
+            AddCommandParameter(cmd, "triggerGroup", trigger.Key.Group);
+            AddCommandParameter(cmd, "triggerJobName", trigger.JobKey.Name);
+            AddCommandParameter(cmd, "triggerJobGroup", trigger.JobKey.Group);
+            AddCommandParameter(cmd, "triggerDescription", trigger.Description);
+            AddCommandParameter(cmd, "triggerNextFireTime", GetDbDateTimeValue(trigger.GetNextFireTimeUtc()));
+            AddCommandParameter(cmd, "triggerPreviousFireTime", GetDbDateTimeValue(trigger.GetPreviousFireTimeUtc()));
+            AddCommandParameter(cmd, "triggerState", state);
+            string paramName = "triggerType";
+
+            var tDel = FindTriggerPersistenceDelegate(trigger);
+            string type = TriggerTypeBlob;
+            if (tDel != null)
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerName", trigger.Key.Name);
-                AddCommandParameter(cmd, "triggerGroup", trigger.Key.Group);
-                AddCommandParameter(cmd, "triggerJobName", trigger.JobKey.Name);
-                AddCommandParameter(cmd, "triggerJobGroup", trigger.JobKey.Group);
-                AddCommandParameter(cmd, "triggerDescription", trigger.Description);
-                AddCommandParameter(cmd, "triggerNextFireTime", GetDbDateTimeValue(trigger.GetNextFireTimeUtc()));
-                AddCommandParameter(cmd, "triggerPreviousFireTime", GetDbDateTimeValue(trigger.GetPreviousFireTimeUtc()));
-                AddCommandParameter(cmd, "triggerState", state);
-                string paramName = "triggerType";
-
-                var tDel = FindTriggerPersistenceDelegate(trigger);
-                string type = TriggerTypeBlob;
-                if (tDel != null)
-                {
-                    type = tDel.GetHandledTriggerTypeDiscriminator();
-                }
-                AddCommandParameter(cmd, paramName, type);
-                AddCommandParameter(cmd, "triggerStartTime", GetDbDateTimeValue(trigger.StartTimeUtc));
-                AddCommandParameter(cmd, "triggerEndTime", GetDbDateTimeValue(trigger.EndTimeUtc));
-                AddCommandParameter(cmd, "triggerCalendarName", trigger.CalendarName);
-                AddCommandParameter(cmd, "triggerMisfireInstruction", trigger.MisfireInstruction);
-
-                paramName = "triggerJobJobDataMap";
-                if (baos != null)
-                {
-                    AddCommandParameter(cmd, paramName, baos, DbProvider.Metadata.DbBinaryType);
-                }
-                else
-                {
-                    AddCommandParameter(cmd, paramName, null, DbProvider.Metadata.DbBinaryType);
-                }
-                AddCommandParameter(cmd, "triggerPriority", trigger.Priority);
-
-                int insertResult = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-
-                if (tDel == null)
-                {
-                    await InsertBlobTrigger(conn, trigger, cancellationToken).ConfigureAwait(false);
-                }
-                else
-                {
-                    await tDel.InsertExtendedTriggerProperties(conn, trigger, state, jobDetail, cancellationToken).ConfigureAwait(false);
-                }
-
-                return insertResult;
+                type = tDel.GetHandledTriggerTypeDiscriminator();
             }
+            AddCommandParameter(cmd, paramName, type);
+            AddCommandParameter(cmd, "triggerStartTime", GetDbDateTimeValue(trigger.StartTimeUtc));
+            AddCommandParameter(cmd, "triggerEndTime", GetDbDateTimeValue(trigger.EndTimeUtc));
+            AddCommandParameter(cmd, "triggerCalendarName", trigger.CalendarName);
+            AddCommandParameter(cmd, "triggerMisfireInstruction", trigger.MisfireInstruction);
+
+            paramName = "triggerJobJobDataMap";
+            if (baos != null)
+            {
+                AddCommandParameter(cmd, paramName, baos, DbProvider.Metadata.DbBinaryType);
+            }
+            else
+            {
+                AddCommandParameter(cmd, paramName, null, DbProvider.Metadata.DbBinaryType);
+            }
+            AddCommandParameter(cmd, "triggerPriority", trigger.Priority);
+
+            int insertResult = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+            if (tDel == null)
+            {
+                await InsertBlobTrigger(conn, trigger, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await tDel.InsertExtendedTriggerProperties(conn, trigger, state, jobDetail, cancellationToken).ConfigureAwait(false);
+            }
+
+            return insertResult;
         }
 
         /// <summary>
@@ -1220,17 +1176,15 @@ namespace Quartz.Impl.AdoJobStore
             IOperableTrigger trigger,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlInsertBlobTrigger)))
-            {
-                // update the blob
-                byte[]? buf = SerializeObject(trigger);
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerName", trigger.Key.Name);
-                AddCommandParameter(cmd, "triggerGroup", trigger.Key.Group);
-                AddCommandParameter(cmd, "blob", buf, DbProvider.Metadata.DbBinaryType);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlInsertBlobTrigger));
+            // update the blob
+            byte[]? buf = SerializeObject(trigger);
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerName", trigger.Key.Name);
+            AddCommandParameter(cmd, "triggerGroup", trigger.Key.Group);
+            AddCommandParameter(cmd, "blob", buf, DbProvider.Metadata.DbBinaryType);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -1338,18 +1292,16 @@ namespace Quartz.Impl.AdoJobStore
             IOperableTrigger trigger,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateBlobTrigger)))
-            {
-                // update the blob
-                byte[]? os = SerializeObject(trigger);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateBlobTrigger));
+            // update the blob
+            byte[]? os = SerializeObject(trigger);
 
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "blob", os, DbProvider.Metadata.DbBinaryType);
-                AddCommandParameter(cmd, "triggerName", trigger.Key.Name);
-                AddCommandParameter(cmd, "triggerGroup", trigger.Key.Group);
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "blob", os, DbProvider.Metadata.DbBinaryType);
+            AddCommandParameter(cmd, "triggerName", trigger.Key.Name);
+            AddCommandParameter(cmd, "triggerGroup", trigger.Key.Group);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -1364,21 +1316,17 @@ namespace Quartz.Impl.AdoJobStore
             TriggerKey triggerKey,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTriggerExistence)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerName", triggerKey.Name);
-                AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTriggerExistence));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerName", triggerKey.Name);
+            AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
 
-                using (var dr = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    if (await dr.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        return true;
-                    }
-                    return false;
-                }
+            using var dr = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (await dr.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                return true;
             }
+            return false;
         }
 
         /// <summary>
@@ -1395,15 +1343,13 @@ namespace Quartz.Impl.AdoJobStore
             string state,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateTriggerState)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "state", state);
-                AddCommandParameter(cmd, "triggerName", triggerKey.Name);
-                AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateTriggerState));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "state", state);
+            AddCommandParameter(cmd, "triggerName", triggerKey.Name);
+            AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -1427,18 +1373,16 @@ namespace Quartz.Impl.AdoJobStore
             string oldState3,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateTriggerStateFromStates)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "newState", newState);
-                AddCommandParameter(cmd, "triggerName", triggerKey.Name);
-                AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
-                AddCommandParameter(cmd, "oldState1", oldState1);
-                AddCommandParameter(cmd, "oldState2", oldState2);
-                AddCommandParameter(cmd, "oldState3", oldState3);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateTriggerStateFromStates));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "newState", newState);
+            AddCommandParameter(cmd, "triggerName", triggerKey.Name);
+            AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
+            AddCommandParameter(cmd, "oldState1", oldState1);
+            AddCommandParameter(cmd, "oldState2", oldState2);
+            AddCommandParameter(cmd, "oldState3", oldState3);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -1462,17 +1406,15 @@ namespace Quartz.Impl.AdoJobStore
             string oldState3,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateTriggerGroupStateFromStates)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "newState", newState);
-                AddCommandParameter(cmd, "groupName", ToSqlLikeClause(matcher));
-                AddCommandParameter(cmd, "oldState1", oldState1);
-                AddCommandParameter(cmd, "oldState2", oldState2);
-                AddCommandParameter(cmd, "oldState3", oldState3);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateTriggerGroupStateFromStates));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "newState", newState);
+            AddCommandParameter(cmd, "groupName", ToSqlLikeClause(matcher));
+            AddCommandParameter(cmd, "oldState1", oldState1);
+            AddCommandParameter(cmd, "oldState2", oldState2);
+            AddCommandParameter(cmd, "oldState3", oldState3);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -1492,16 +1434,14 @@ namespace Quartz.Impl.AdoJobStore
             string oldState,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateTriggerStateFromState)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "newState", newState);
-                AddCommandParameter(cmd, "triggerName", triggerKey.Name);
-                AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
-                AddCommandParameter(cmd, "oldState", oldState);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateTriggerStateFromState));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "newState", newState);
+            AddCommandParameter(cmd, "triggerName", triggerKey.Name);
+            AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
+            AddCommandParameter(cmd, "oldState", oldState);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -1523,17 +1463,15 @@ namespace Quartz.Impl.AdoJobStore
             DateTimeOffset nextFireTime,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateTriggerStateFromStateWithNextFireTime)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "newState", newState);
-                AddCommandParameter(cmd, "triggerName", triggerKey.Name);
-                AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
-                AddCommandParameter(cmd, "oldState", oldState);
-                AddCommandParameter(cmd, "nextFireTime", GetDbDateTimeValue(nextFireTime));
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateTriggerStateFromStateWithNextFireTime));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "newState", newState);
+            AddCommandParameter(cmd, "triggerName", triggerKey.Name);
+            AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
+            AddCommandParameter(cmd, "oldState", oldState);
+            AddCommandParameter(cmd, "nextFireTime", GetDbDateTimeValue(nextFireTime));
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -1553,15 +1491,13 @@ namespace Quartz.Impl.AdoJobStore
             string oldState,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateTriggerGroupStateFromState)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "newState", newState);
-                AddCommandParameter(cmd, "triggerGroup", ToSqlLikeClause(matcher));
-                AddCommandParameter(cmd, "oldState", oldState);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateTriggerGroupStateFromState));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "newState", newState);
+            AddCommandParameter(cmd, "triggerGroup", ToSqlLikeClause(matcher));
+            AddCommandParameter(cmd, "oldState", oldState);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -1578,15 +1514,13 @@ namespace Quartz.Impl.AdoJobStore
             string state,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateJobTriggerStates)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "state", state);
-                AddCommandParameter(cmd, "jobName", jobKey.Name);
-                AddCommandParameter(cmd, "jobGroup", jobKey.Group);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateJobTriggerStates));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "state", state);
+            AddCommandParameter(cmd, "jobName", jobKey.Name);
+            AddCommandParameter(cmd, "jobGroup", jobKey.Group);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -1605,16 +1539,14 @@ namespace Quartz.Impl.AdoJobStore
             string oldState,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateJobTriggerStatesFromOtherState)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "state", state);
-                AddCommandParameter(cmd, "jobName", jobKey.Name);
-                AddCommandParameter(cmd, "jobGroup", jobKey.Group);
-                AddCommandParameter(cmd, "oldState", oldState);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateJobTriggerStatesFromOtherState));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "state", state);
+            AddCommandParameter(cmd, "jobName", jobKey.Name);
+            AddCommandParameter(cmd, "jobGroup", jobKey.Group);
+            AddCommandParameter(cmd, "oldState", oldState);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -1629,14 +1561,12 @@ namespace Quartz.Impl.AdoJobStore
             TriggerKey triggerKey,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeleteBlobTrigger)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerName", triggerKey.Name);
-                AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeleteBlobTrigger));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerName", triggerKey.Name);
+            AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -1653,14 +1583,12 @@ namespace Quartz.Impl.AdoJobStore
         {
             await DeleteTriggerExtension(conn, triggerKey, cancellationToken).ConfigureAwait(false);
 
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeleteTrigger)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerName", triggerKey.Name);
-                AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeleteTrigger));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerName", triggerKey.Name);
+            AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         protected virtual async Task DeleteTriggerExtension(
@@ -1691,21 +1619,17 @@ namespace Quartz.Impl.AdoJobStore
             JobKey jobKey,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectNumTriggersForJob)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "jobName", jobKey.Name);
-                AddCommandParameter(cmd, "jobGroup", jobKey.Group);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectNumTriggersForJob));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "jobName", jobKey.Name);
+            AddCommandParameter(cmd, "jobGroup", jobKey.Group);
 
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        return Convert.ToInt32(rs.GetValue(0), CultureInfo.InvariantCulture);
-                    }
-                    return 0;
-                }
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                return Convert.ToInt32(rs.GetValue(0), CultureInfo.InvariantCulture);
             }
+            return 0;
         }
 
         public virtual Task<IJobDetail?> SelectJobForTrigger(
@@ -1724,34 +1648,30 @@ namespace Quartz.Impl.AdoJobStore
             bool loadJobType,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectJobForTrigger)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectJobForTrigger));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerName", triggerKey.Name);
+            AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerName", triggerKey.Name);
-                AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+                JobDetailImpl job = new JobDetailImpl();
+                job.Name = rs.GetString(ColumnJobName)!;
+                job.Group = rs.GetString(ColumnJobGroup)!;
+                job.Durable = GetBooleanFromDbValue(rs[ColumnIsDurable]);
+                if (loadJobType)
                 {
-                    if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        JobDetailImpl job = new JobDetailImpl();
-                        job.Name = rs.GetString(ColumnJobName)!;
-                        job.Group = rs.GetString(ColumnJobGroup)!;
-                        job.Durable = GetBooleanFromDbValue(rs[ColumnIsDurable]);
-                        if (loadJobType)
-                        {
-                            job.JobType = loadHelper.LoadType(rs.GetString(ColumnJobClass)!)!;
-                        }
-                        job.RequestsRecovery = GetBooleanFromDbValue(rs[ColumnRequestsRecovery]);
-
-                        return job;
-                    }
-                    if (logger.IsDebugEnabled())
-                    {
-                        logger.Debug("No job for trigger '" + triggerKey + "'.");
-                    }
-                    return null;
+                    job.JobType = loadHelper.LoadType(rs.GetString(ColumnJobClass)!)!;
                 }
+                job.RequestsRecovery = GetBooleanFromDbValue(rs[ColumnRequestsRecovery]);
+
+                return job;
             }
+            if (logger.IsDebugEnabled())
+            {
+                logger.Debug("No job for trigger '" + triggerKey + "'.");
+            }
+            return null;
         }
 
         /// <summary>
@@ -1899,18 +1819,14 @@ namespace Quartz.Impl.AdoJobStore
             IOperableTrigger? trigger = null;
             if (triggerType.Equals(TriggerTypeBlob))
             {
-                using (var cmd2 = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectBlobTrigger)))
+                using var cmd2 = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectBlobTrigger));
+                AddCommandParameter(cmd2, "schedulerName", schedName);
+                AddCommandParameter(cmd2, "triggerName", triggerKey.Name);
+                AddCommandParameter(cmd2, "triggerGroup", triggerKey.Group);
+                using var rs2 = await cmd2.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                if (await rs2.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
-                    AddCommandParameter(cmd2, "schedulerName", schedName);
-                    AddCommandParameter(cmd2, "triggerName", triggerKey.Name);
-                    AddCommandParameter(cmd2, "triggerGroup", triggerKey.Group);
-                    using (var rs2 = await cmd2.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        if (await rs2.ReadAsync(cancellationToken).ConfigureAwait(false))
-                        {
-                            trigger = await GetObjectFromBlob<IOperableTrigger>(rs2, 0, cancellationToken).ConfigureAwait(false);
-                        }
-                    }
+                    trigger = await GetObjectFromBlob<IOperableTrigger>(rs2, 0, cancellationToken).ConfigureAwait(false);
                 }
             }
             else
@@ -1971,17 +1887,13 @@ namespace Quartz.Impl.AdoJobStore
             TriggerKey triggerKey,
             CancellationToken cancellationToken)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTrigger)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerName", triggerKey.Name);
-                AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTrigger));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerName", triggerKey.Name);
+            AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
 
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    return await rs.ReadAsync(cancellationToken).ConfigureAwait(false);
-                }
-            }
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            return await rs.ReadAsync(cancellationToken).ConfigureAwait(false);
         }
 
         private static void SetTriggerStateProperties(IOperableTrigger trigger, TriggerPropertyBundle props)
@@ -2040,26 +1952,23 @@ namespace Quartz.Impl.AdoJobStore
             TriggerKey triggerKey,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTriggerState)))
-            {
-                string state;
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTriggerState));
+            string state;
 
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerName", triggerKey.Name);
-                AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        state = rs.GetString(ColumnTriggerState)!;
-                    }
-                    else
-                    {
-                        state = StateDeleted;
-                    }
-                }
-                return state;
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerName", triggerKey.Name);
+            AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                state = rs.GetString(ColumnTriggerState)!;
             }
+            else
+            {
+                state = StateDeleted;
+            }
+
+            return state;
         }
 
         /// <summary>
@@ -2075,29 +1984,26 @@ namespace Quartz.Impl.AdoJobStore
             TriggerKey triggerKey,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTriggerStatus)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTriggerStatus));
+            TriggerStatus? status = null;
+
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerName", triggerKey.Name);
+            AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                TriggerStatus? status = null;
+                string state = rs.GetString(ColumnTriggerState)!;
+                object nextFireTime = rs[ColumnNextFireTime];
+                string jobName = rs.GetString(ColumnJobName)!;
+                string jobGroup = rs.GetString(ColumnJobGroup)!;
 
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerName", triggerKey.Name);
-                AddCommandParameter(cmd, "triggerGroup", triggerKey.Group);
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        string state = rs.GetString(ColumnTriggerState)!;
-                        object nextFireTime = rs[ColumnNextFireTime];
-                        string jobName = rs.GetString(ColumnJobName)!;
-                        string jobGroup = rs.GetString(ColumnJobGroup)!;
+                var nft = GetDateTimeFromDbValue(nextFireTime);
 
-                        var nft = GetDateTimeFromDbValue(nextFireTime);
-
-                        status = new TriggerStatus(state, nft, triggerKey, new JobKey(jobName, jobGroup));
-                    }
-                }
-                return status;
+                status = new TriggerStatus(state, nft, triggerKey, new JobKey(jobName, jobGroup));
             }
+
+            return status;
         }
 
         /// <summary>
@@ -2110,22 +2016,18 @@ namespace Quartz.Impl.AdoJobStore
             ConnectionAndTransactionHolder conn,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectNumTriggers)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectNumTriggers));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+
+            int count = 0;
+
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-
-                int count = 0;
-
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        count = Convert.ToInt32(rs.GetInt32(0));
-                    }
-                }
-
-                return count;
+                count = Convert.ToInt32(rs.GetInt32(0));
             }
+
+            return count;
         }
 
         /// <summary>
@@ -2140,21 +2042,17 @@ namespace Quartz.Impl.AdoJobStore
             ConnectionAndTransactionHolder conn,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTriggerGroups)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTriggerGroups));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            List<string> list = new List<string>();
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    List<string> list = new List<string>();
-                    while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        list.Add((string) rs[0]);
-                    }
-
-                    return list;
-                }
+                list.Add((string) rs[0]);
             }
+
+            return list;
         }
 
         public virtual async Task<IReadOnlyCollection<string>> SelectTriggerGroups(
@@ -2162,21 +2060,17 @@ namespace Quartz.Impl.AdoJobStore
             GroupMatcher<TriggerKey> matcher,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTriggerGroupsFiltered)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTriggerGroupsFiltered));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerGroup", ToSqlLikeClause(matcher));
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            List<string> list = new List<string>();
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerGroup", ToSqlLikeClause(matcher));
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    List<string> list = new List<string>();
-                    while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        list.Add((string) rs[0]);
-                    }
-
-                    return list;
-                }
+                list.Add((string) rs[0]);
             }
+
+            return list;
         }
 
         /// <summary>
@@ -2206,20 +2100,16 @@ namespace Quartz.Impl.AdoJobStore
                 parameter = ToSqlLikeClause(matcher);
             }
 
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(sql)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(sql));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerGroup", parameter);
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            var keys = new HashSet<TriggerKey>();
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerGroup", parameter);
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    var keys = new HashSet<TriggerKey>();
-                    while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        keys.Add(new TriggerKey(rs.GetString(0), rs.GetString(1)));
-                    }
-                    return keys;
-                }
+                keys.Add(new TriggerKey(rs.GetString(0), rs.GetString(1)));
             }
+            return keys;
         }
 
         /// <summary>
@@ -2234,14 +2124,12 @@ namespace Quartz.Impl.AdoJobStore
             string groupName,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlInsertPausedTriggerGroup)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerGroup", groupName);
-                int rows = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlInsertPausedTriggerGroup));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerGroup", groupName);
+            int rows = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
-                return rows;
-            }
+            return rows;
         }
 
         /// <summary>
@@ -2256,14 +2144,12 @@ namespace Quartz.Impl.AdoJobStore
             string groupName,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeletePausedTriggerGroup)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerGroup", groupName);
-                int rows = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeletePausedTriggerGroup));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerGroup", groupName);
+            int rows = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
-                return rows;
-            }
+            return rows;
         }
 
         public virtual async Task<int> DeletePausedTriggerGroup(
@@ -2271,14 +2157,12 @@ namespace Quartz.Impl.AdoJobStore
             GroupMatcher<TriggerKey> matcher,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeletePausedTriggerGroup)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerGroup", ToSqlLikeClause(matcher));
-                int rows = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeletePausedTriggerGroup));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerGroup", ToSqlLikeClause(matcher));
+            int rows = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
-                return rows;
-            }
+            return rows;
         }
 
         /// <summary>
@@ -2291,12 +2175,10 @@ namespace Quartz.Impl.AdoJobStore
             ConnectionAndTransactionHolder conn,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeletePausedTriggerGroups)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                int rows = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-                return rows;
-            }
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeletePausedTriggerGroups));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            int rows = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            return rows;
         }
 
         /// <summary>
@@ -2313,15 +2195,11 @@ namespace Quartz.Impl.AdoJobStore
             string groupName,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectPausedTriggerGroup)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerGroup", groupName);
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    return await rs.ReadAsync(cancellationToken).ConfigureAwait(false);
-                }
-            }
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectPausedTriggerGroup));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerGroup", groupName);
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            return await rs.ReadAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -2338,20 +2216,16 @@ namespace Quartz.Impl.AdoJobStore
             string groupName,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectNumTriggersInGroup)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectNumTriggersInGroup));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerGroup", groupName);
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (!await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerGroup", groupName);
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    if (!await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        return false;
-                    }
-
-                    return Convert.ToInt32(rs.GetInt32(0)) > 0;
-                }
+                return false;
             }
+
+            return Convert.ToInt32(rs.GetInt32(0)) > 0;
         }
 
         //---------------------------------------------------------------------------
@@ -2375,14 +2249,12 @@ namespace Quartz.Impl.AdoJobStore
         {
             byte[]? baos = SerializeObject(calendar);
 
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlInsertCalendar)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "calendarName", calendarName);
-                AddCommandParameter(cmd, "calendar", baos, DbProvider.Metadata.DbBinaryType);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlInsertCalendar));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "calendarName", calendarName);
+            AddCommandParameter(cmd, "calendar", baos, DbProvider.Metadata.DbBinaryType);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -2402,14 +2274,12 @@ namespace Quartz.Impl.AdoJobStore
         {
             byte[]? baos = SerializeObject(calendar);
 
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateCalendar)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "calendar", baos, DbProvider.Metadata.DbBinaryType);
-                AddCommandParameter(cmd, "calendarName", calendarName);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateCalendar));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "calendar", baos, DbProvider.Metadata.DbBinaryType);
+            AddCommandParameter(cmd, "calendarName", calendarName);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -2426,20 +2296,16 @@ namespace Quartz.Impl.AdoJobStore
             string calendarName,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectCalendarExistence)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectCalendarExistence));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "calendarName", calendarName);
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "calendarName", calendarName);
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        return true;
-                    }
-
-                    return false;
-                }
+                return true;
             }
+
+            return false;
         }
 
         /// <summary>
@@ -2453,24 +2319,20 @@ namespace Quartz.Impl.AdoJobStore
             string calendarName,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectCalendar)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectCalendar));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "calendarName", calendarName);
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            ICalendar? cal = null;
+            if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "calendarName", calendarName);
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    ICalendar? cal = null;
-                    if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        cal = await GetObjectFromBlob<ICalendar>(rs, 0, cancellationToken).ConfigureAwait(false);
-                    }
-                    if (null == cal)
-                    {
-                        logger.Warn("Couldn't find calendar with name '" + calendarName + "'.");
-                    }
-                    return cal;
-                }
+                cal = await GetObjectFromBlob<ICalendar>(rs, 0, cancellationToken).ConfigureAwait(false);
             }
+            if (null == cal)
+            {
+                logger.Warn("Couldn't find calendar with name '" + calendarName + "'.");
+            }
+            return cal;
         }
 
         /// <summary>
@@ -2487,20 +2349,16 @@ namespace Quartz.Impl.AdoJobStore
             string calendarName,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectReferencedCalendar)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectReferencedCalendar));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "calendarName", calendarName);
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "calendarName", calendarName);
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        return true;
-                    }
-
-                    return false;
-                }
+                return true;
             }
+
+            return false;
         }
 
         /// <summary>
@@ -2515,12 +2373,10 @@ namespace Quartz.Impl.AdoJobStore
             string calendarName,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeleteCalendar)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "calendarName", calendarName);
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeleteCalendar));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "calendarName", calendarName);
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -2533,20 +2389,16 @@ namespace Quartz.Impl.AdoJobStore
             ConnectionAndTransactionHolder conn,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectNumCalendars)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectNumCalendars));
+            AddCommandParameter(cmd, "schedulerName", schedName);
 
-                int count = 0;
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        count = Convert.ToInt32(rs.GetValue(0), CultureInfo.InvariantCulture);
-                    }
-                    return count;
-                }
+            int count = 0;
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                count = Convert.ToInt32(rs.GetValue(0), CultureInfo.InvariantCulture);
             }
+            return count;
         }
 
         /// <summary>
@@ -2561,20 +2413,16 @@ namespace Quartz.Impl.AdoJobStore
             ConnectionAndTransactionHolder conn,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectCalendars)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectCalendars));
+            AddCommandParameter(cmd, "schedulerName", schedName);
 
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    List<string> list = new List<string>();
-                    while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        list.Add((string) rs[0]);
-                    }
-                    return list;
-                }
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            List<string> list = new List<string>();
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                list.Add((string) rs[0]);
             }
+            return list;
         }
 
         //---------------------------------------------------------------------------
@@ -2597,22 +2445,18 @@ namespace Quartz.Impl.AdoJobStore
             DateTimeOffset fireTime,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTriggerForFireTime)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectTriggerForFireTime));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "state", StateWaiting);
+            AddCommandParameter(cmd, "fireTime", GetDbDateTimeValue(fireTime));
+
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "state", StateWaiting);
-                AddCommandParameter(cmd, "fireTime", GetDbDateTimeValue(fireTime));
-
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        return new TriggerKey(rs.GetString(ColumnTriggerName)!, rs.GetString(ColumnTriggerGroup)!);
-                    }
-
-                    return null;
-                }
+                return new TriggerKey(rs.GetString(ColumnTriggerName)!, rs.GetString(ColumnTriggerGroup)!);
             }
+
+            return null;
         }
 
         /// <summary>
@@ -2637,24 +2481,36 @@ namespace Quartz.Impl.AdoJobStore
                 maxCount = 1; // we want at least one trigger back.
             }
 
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(GetSelectNextTriggerToAcquireSql(maxCount))))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(GetSelectNextTriggerToAcquireSql(maxCount)));
+            List<TriggerKey> nextTriggers = new();
+
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "state", StateWaiting);
+            AddCommandParameter(cmd, "noLaterThan", GetDbDateTimeValue(noLaterThan));
+            AddCommandParameter(cmd, "noEarlierThan", GetDbDateTimeValue(noEarlierThan));
+
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            // signal cancel, otherwise ADO.NET might have trouble handling partial reads from open reader
+            var shouldStop = false;
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                List<TriggerKey> nextTriggers = new List<TriggerKey>();
-
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "state", StateWaiting);
-                AddCommandParameter(cmd, "noLaterThan", GetDbDateTimeValue(noLaterThan));
-                AddCommandParameter(cmd, "noEarlierThan", GetDbDateTimeValue(noEarlierThan));
-
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+                if (shouldStop)
                 {
-                    while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false) && nextTriggers.Count < maxCount)
-                    {
-                        nextTriggers.Add(new TriggerKey((string) rs[ColumnTriggerName], (string) rs[ColumnTriggerGroup]));
-                    }
+                    cmd.Cancel();
+                    break;
                 }
-                return nextTriggers;
+
+                if (nextTriggers.Count < maxCount)
+                {
+                    nextTriggers.Add(new TriggerKey((string) rs[ColumnTriggerName], (string) rs[ColumnTriggerGroup]));
+                }
+                else
+                {
+                    shouldStop = true;
+                }
             }
+
+            return nextTriggers;
         }
 
         protected virtual string GetSelectNextTriggerToAcquireSql(int maxCount)
@@ -2679,35 +2535,33 @@ namespace Quartz.Impl.AdoJobStore
             IJobDetail? job,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlInsertFiredTrigger)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlInsertFiredTrigger));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerEntryId", trigger.FireInstanceId);
+            AddCommandParameter(cmd, "triggerName", trigger.Key.Name);
+            AddCommandParameter(cmd, "triggerGroup", trigger.Key.Group);
+            AddCommandParameter(cmd, "triggerInstanceName", instanceId);
+            AddCommandParameter(cmd, "triggerFireTime", GetDbDateTimeValue(SystemTime.UtcNow()));
+            AddCommandParameter(cmd, "triggerScheduledTime", GetDbDateTimeValue(trigger.GetNextFireTimeUtc()));
+            AddCommandParameter(cmd, "triggerState", state);
+            if (job != null)
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerEntryId", trigger.FireInstanceId);
-                AddCommandParameter(cmd, "triggerName", trigger.Key.Name);
-                AddCommandParameter(cmd, "triggerGroup", trigger.Key.Group);
-                AddCommandParameter(cmd, "triggerInstanceName", instanceId);
-                AddCommandParameter(cmd, "triggerFireTime", GetDbDateTimeValue(SystemTime.UtcNow()));
-                AddCommandParameter(cmd, "triggerScheduledTime", GetDbDateTimeValue(trigger.GetNextFireTimeUtc()));
-                AddCommandParameter(cmd, "triggerState", state);
-                if (job != null)
-                {
-                    AddCommandParameter(cmd, "triggerJobName", trigger.JobKey.Name);
-                    AddCommandParameter(cmd, "triggerJobGroup", trigger.JobKey.Group);
-                    AddCommandParameter(cmd, "triggerJobStateful", GetDbBooleanValue(job.ConcurrentExecutionDisallowed));
-                    AddCommandParameter(cmd, "triggerJobRequestsRecovery", GetDbBooleanValue(job.RequestsRecovery));
-                }
-                else
-                {
-                    AddCommandParameter(cmd, "triggerJobName", null);
-                    AddCommandParameter(cmd, "triggerJobGroup", null);
-                    AddCommandParameter(cmd, "triggerJobStateful", GetDbBooleanValue(false));
-                    AddCommandParameter(cmd, "triggerJobRequestsRecovery", GetDbBooleanValue(false));
-                }
-
-                AddCommandParameter(cmd, "triggerPriority", trigger.Priority);
-
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                AddCommandParameter(cmd, "triggerJobName", trigger.JobKey.Name);
+                AddCommandParameter(cmd, "triggerJobGroup", trigger.JobKey.Group);
+                AddCommandParameter(cmd, "triggerJobStateful", GetDbBooleanValue(job.ConcurrentExecutionDisallowed));
+                AddCommandParameter(cmd, "triggerJobRequestsRecovery", GetDbBooleanValue(job.RequestsRecovery));
             }
+            else
+            {
+                AddCommandParameter(cmd, "triggerJobName", null);
+                AddCommandParameter(cmd, "triggerJobGroup", null);
+                AddCommandParameter(cmd, "triggerJobStateful", GetDbBooleanValue(false));
+                AddCommandParameter(cmd, "triggerJobRequestsRecovery", GetDbBooleanValue(false));
+            }
+
+            AddCommandParameter(cmd, "triggerPriority", trigger.Priority);
+
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -2790,28 +2644,27 @@ namespace Quartz.Impl.AdoJobStore
                 AddCommandParameter(cmd, "triggerGroup", groupName);
             }
 
-            using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    FiredTriggerRecord rec = new FiredTriggerRecord();
+                FiredTriggerRecord rec = new FiredTriggerRecord();
 
-                    rec.FireInstanceId = rs.GetString(ColumnEntryId)!;
-                    rec.FireInstanceState = rs.GetString(ColumnEntryState)!;
-                    rec.FireTimestamp = GetDateTimeFromDbValue(rs[ColumnFiredTime]) ?? DateTimeOffset.MinValue;
-                    rec.ScheduleTimestamp = GetDateTimeFromDbValue(rs[ColumnScheduledTime]) ?? DateTimeOffset.MinValue;
-                    rec.Priority = Convert.ToInt32(rs[ColumnPriority], CultureInfo.InvariantCulture);
-                    rec.SchedulerInstanceId = rs.GetString(ColumnInstanceName)!;
-                    rec.TriggerKey = new TriggerKey(rs.GetString(ColumnTriggerName)!, rs.GetString(ColumnTriggerGroup)!);
-                    if (!rec.FireInstanceState.Equals(StateAcquired))
-                    {
-                        rec.JobDisallowsConcurrentExecution = GetBooleanFromDbValue(rs[ColumnIsNonConcurrent]);
-                        rec.JobRequestsRecovery = GetBooleanFromDbValue(rs[ColumnRequestsRecovery]);
-                        rec.JobKey = new JobKey(rs.GetString(ColumnJobName)!, rs.GetString(ColumnJobGroup)!);
-                    }
-                    lst.Add(rec);
+                rec.FireInstanceId = rs.GetString(ColumnEntryId)!;
+                rec.FireInstanceState = rs.GetString(ColumnEntryState)!;
+                rec.FireTimestamp = GetDateTimeFromDbValue(rs[ColumnFiredTime]) ?? DateTimeOffset.MinValue;
+                rec.ScheduleTimestamp = GetDateTimeFromDbValue(rs[ColumnScheduledTime]) ?? DateTimeOffset.MinValue;
+                rec.Priority = Convert.ToInt32(rs[ColumnPriority], CultureInfo.InvariantCulture);
+                rec.SchedulerInstanceId = rs.GetString(ColumnInstanceName)!;
+                rec.TriggerKey = new TriggerKey(rs.GetString(ColumnTriggerName)!, rs.GetString(ColumnTriggerGroup)!);
+                if (!rec.FireInstanceState.Equals(StateAcquired))
+                {
+                    rec.JobDisallowsConcurrentExecution = GetBooleanFromDbValue(rs[ColumnIsNonConcurrent]);
+                    rec.JobRequestsRecovery = GetBooleanFromDbValue(rs[ColumnRequestsRecovery]);
+                    rec.JobKey = new JobKey(rs.GetString(ColumnJobName)!, rs.GetString(ColumnJobGroup)!);
                 }
+                lst.Add(rec);
             }
+
             return lst;
         }
 
@@ -2847,28 +2700,27 @@ namespace Quartz.Impl.AdoJobStore
                 AddCommandParameter(cmd, "jobGroup", groupName);
             }
 
-            using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    FiredTriggerRecord rec = new FiredTriggerRecord();
+                FiredTriggerRecord rec = new FiredTriggerRecord();
 
-                    rec.FireInstanceId = rs.GetString(ColumnEntryId)!;
-                    rec.FireInstanceState = rs.GetString(ColumnEntryState)!;
-                    rec.FireTimestamp = GetDateTimeFromDbValue(rs[ColumnFiredTime]) ?? DateTimeOffset.MinValue;
-                    rec.ScheduleTimestamp = GetDateTimeFromDbValue(rs[ColumnScheduledTime]) ?? DateTimeOffset.MinValue;
-                    rec.Priority = Convert.ToInt32(rs[ColumnPriority], CultureInfo.InvariantCulture);
-                    rec.SchedulerInstanceId = rs.GetString(ColumnInstanceName)!;
-                    rec.TriggerKey = new TriggerKey(rs.GetString(ColumnTriggerName)!, rs.GetString(ColumnTriggerGroup)!);
-                    if (!rec.FireInstanceState.Equals(StateAcquired))
-                    {
-                        rec.JobDisallowsConcurrentExecution = GetBooleanFromDbValue(rs[ColumnIsNonConcurrent]);
-                        rec.JobRequestsRecovery = GetBooleanFromDbValue(rs[ColumnRequestsRecovery]);
-                        rec.JobKey = new JobKey(rs.GetString(ColumnJobName)!, rs.GetString(ColumnJobGroup)!);
-                    }
-                    lst.Add(rec);
+                rec.FireInstanceId = rs.GetString(ColumnEntryId)!;
+                rec.FireInstanceState = rs.GetString(ColumnEntryState)!;
+                rec.FireTimestamp = GetDateTimeFromDbValue(rs[ColumnFiredTime]) ?? DateTimeOffset.MinValue;
+                rec.ScheduleTimestamp = GetDateTimeFromDbValue(rs[ColumnScheduledTime]) ?? DateTimeOffset.MinValue;
+                rec.Priority = Convert.ToInt32(rs[ColumnPriority], CultureInfo.InvariantCulture);
+                rec.SchedulerInstanceId = rs.GetString(ColumnInstanceName)!;
+                rec.TriggerKey = new TriggerKey(rs.GetString(ColumnTriggerName)!, rs.GetString(ColumnTriggerGroup)!);
+                if (!rec.FireInstanceState.Equals(StateAcquired))
+                {
+                    rec.JobDisallowsConcurrentExecution = GetBooleanFromDbValue(rs[ColumnIsNonConcurrent]);
+                    rec.JobRequestsRecovery = GetBooleanFromDbValue(rs[ColumnRequestsRecovery]);
+                    rec.JobKey = new JobKey(rs.GetString(ColumnJobName)!, rs.GetString(ColumnJobGroup)!);
                 }
+                lst.Add(rec);
             }
+
             return lst;
         }
 
@@ -2887,34 +2739,30 @@ namespace Quartz.Impl.AdoJobStore
         {
             List<FiredTriggerRecord> lst = new List<FiredTriggerRecord>();
 
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectInstancesFiredTriggers)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectInstancesFiredTriggers));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "instanceName", instanceName);
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "instanceName", instanceName);
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+                FiredTriggerRecord rec = new FiredTriggerRecord();
+
+                rec.FireInstanceId = rs.GetString(ColumnEntryId)!;
+                rec.FireInstanceState = rs.GetString(ColumnEntryState)!;
+                rec.FireTimestamp = GetDateTimeFromDbValue(rs[ColumnFiredTime]) ?? DateTimeOffset.MinValue;
+                rec.ScheduleTimestamp = GetDateTimeFromDbValue(rs[ColumnScheduledTime]) ?? DateTimeOffset.MinValue;
+                rec.SchedulerInstanceId = rs.GetString(ColumnInstanceName)!;
+                rec.TriggerKey = new TriggerKey(rs.GetString(ColumnTriggerName)!, rs.GetString(ColumnTriggerGroup)!);
+                if (!rec.FireInstanceState.Equals(StateAcquired))
                 {
-                    while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        FiredTriggerRecord rec = new FiredTriggerRecord();
-
-                        rec.FireInstanceId = rs.GetString(ColumnEntryId)!;
-                        rec.FireInstanceState = rs.GetString(ColumnEntryState)!;
-                        rec.FireTimestamp = GetDateTimeFromDbValue(rs[ColumnFiredTime]) ?? DateTimeOffset.MinValue;
-                        rec.ScheduleTimestamp = GetDateTimeFromDbValue(rs[ColumnScheduledTime]) ?? DateTimeOffset.MinValue;
-                        rec.SchedulerInstanceId = rs.GetString(ColumnInstanceName)!;
-                        rec.TriggerKey = new TriggerKey(rs.GetString(ColumnTriggerName)!, rs.GetString(ColumnTriggerGroup)!);
-                        if (!rec.FireInstanceState.Equals(StateAcquired))
-                        {
-                            rec.JobDisallowsConcurrentExecution = GetBooleanFromDbValue(rs[ColumnIsNonConcurrent]);
-                            rec.JobRequestsRecovery = GetBooleanFromDbValue(rs[ColumnRequestsRecovery]);
-                            rec.JobKey = new JobKey(rs.GetString(ColumnJobName)!, rs.GetString(ColumnJobGroup)!);
-                        }
-                        lst.Add(rec);
-                    }
+                    rec.JobDisallowsConcurrentExecution = GetBooleanFromDbValue(rs[ColumnIsNonConcurrent]);
+                    rec.JobRequestsRecovery = GetBooleanFromDbValue(rs[ColumnRequestsRecovery]);
+                    rec.JobKey = new JobKey(rs.GetString(ColumnJobName)!, rs.GetString(ColumnJobGroup)!);
                 }
-
-                return lst;
+                lst.Add(rec);
             }
+
+            return lst;
         }
 
         /// <summary>
@@ -2932,19 +2780,15 @@ namespace Quartz.Impl.AdoJobStore
             CancellationToken cancellationToken = default)
         {
             var instanceNames = new HashSet<string>();
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectFiredTriggerInstanceNames)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectFiredTriggerInstanceNames));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        instanceNames.Add(rs.GetString(ColumnInstanceName)!);
-                    }
-
-                    return instanceNames;
-                }
+                instanceNames.Add(rs.GetString(ColumnInstanceName)!);
             }
+
+            return instanceNames;
         }
 
         /// <summary>
@@ -2959,12 +2803,10 @@ namespace Quartz.Impl.AdoJobStore
             string entryId,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeleteFiredTrigger)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "triggerEntryId", entryId);
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeleteFiredTrigger));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "triggerEntryId", entryId);
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -2979,22 +2821,18 @@ namespace Quartz.Impl.AdoJobStore
             JobKey jobKey,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectJobExecutionCount)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectJobExecutionCount));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "jobName", jobKey.Name);
+            AddCommandParameter(cmd, "jobGroup", jobKey.Group);
+
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "jobName", jobKey.Name);
-                AddCommandParameter(cmd, "jobGroup", jobKey.Group);
-
-                using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    if (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        return Convert.ToInt32(rs.GetValue(0), CultureInfo.InvariantCulture);
-                    }
-
-                    return 0;
-                }
+                return Convert.ToInt32(rs.GetValue(0), CultureInfo.InvariantCulture);
             }
+
+            return 0;
         }
 
         /// <summary>
@@ -3013,15 +2851,13 @@ namespace Quartz.Impl.AdoJobStore
             TimeSpan interval,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlInsertSchedulerState)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "instanceName", instanceName);
-                AddCommandParameter(cmd, "lastCheckinTime", GetDbDateTimeValue(checkInTime));
-                AddCommandParameter(cmd, "checkinInterval", GetDbTimeSpanValue(interval));
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlInsertSchedulerState));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "instanceName", instanceName);
+            AddCommandParameter(cmd, "lastCheckinTime", GetDbDateTimeValue(checkInTime));
+            AddCommandParameter(cmd, "checkinInterval", GetDbTimeSpanValue(interval));
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -3036,13 +2872,11 @@ namespace Quartz.Impl.AdoJobStore
             string instanceName,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeleteSchedulerState)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "instanceName", instanceName);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlDeleteSchedulerState));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "instanceName", instanceName);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -3059,14 +2893,12 @@ namespace Quartz.Impl.AdoJobStore
             DateTimeOffset checkInTime,
             CancellationToken cancellationToken = default)
         {
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateSchedulerState)))
-            {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                AddCommandParameter(cmd, "lastCheckinTime", GetDbDateTimeValue(checkInTime));
-                AddCommandParameter(cmd, "instanceName", instanceName);
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlUpdateSchedulerState));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            AddCommandParameter(cmd, "lastCheckinTime", GetDbDateTimeValue(checkInTime));
+            AddCommandParameter(cmd, "instanceName", instanceName);
 
-                return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -3100,17 +2932,16 @@ namespace Quartz.Impl.AdoJobStore
 
             AddCommandParameter(cmd, "schedulerName", schedName);
 
-            using (var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+            using var rs = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                while (await rs.ReadAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    SchedulerStateRecord rec = new SchedulerStateRecord();
-                    rec.SchedulerInstanceId = rs.GetString(ColumnInstanceName)!;
-                    rec.CheckinTimestamp = GetDateTimeFromDbValue(rs[ColumnLastCheckinTime]) ?? DateTimeOffset.MinValue;
-                    rec.CheckinInterval = GetTimeSpanFromDbValue(rs[ColumnCheckinInterval]) ?? TimeSpan.Zero;
-                    list.Add(rec);
-                }
+                SchedulerStateRecord rec = new SchedulerStateRecord();
+                rec.SchedulerInstanceId = rs.GetString(ColumnInstanceName)!;
+                rec.CheckinTimestamp = GetDateTimeFromDbValue(rs[ColumnLastCheckinTime]) ?? DateTimeOffset.MinValue;
+                rec.CheckinInterval = GetTimeSpanFromDbValue(rs[ColumnCheckinInterval]) ?? TimeSpan.Zero;
+                list.Add(rec);
             }
+
             return list;
         }
 
@@ -3301,10 +3132,8 @@ namespace Quartz.Impl.AdoJobStore
             var length = dr.GetBytes(colIndex, 0, null!, 0, int.MaxValue);
             byte[] outbyte = new byte[length];
             dr.GetBytes(colIndex, 0, outbyte, 0, outbyte.Length);
-            using (MemoryStream stream = new MemoryStream())
-            {
-                await stream.WriteAsync(outbyte, 0, outbyte.Length, cancellationToken).ConfigureAwait(false);
-            }
+            using MemoryStream stream = new MemoryStream();
+            await stream.WriteAsync(outbyte, 0, outbyte.Length, cancellationToken).ConfigureAwait(false);
             return outbyte;
         }
 
@@ -3339,19 +3168,16 @@ namespace Quartz.Impl.AdoJobStore
             CancellationToken cancellationToken = default)
         {
             var retValue = new HashSet<string>();
-            using (var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectPausedTriggerGroups)))
+            using var cmd = PrepareCommand(conn, ReplaceTablePrefix(SqlSelectPausedTriggerGroups));
+            AddCommandParameter(cmd, "schedulerName", schedName);
+            using var dr = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await dr.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                AddCommandParameter(cmd, "schedulerName", schedName);
-                using (var dr = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    while (await dr.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        string groupName = (string) dr[ColumnTriggerGroup];
-                        retValue.Add(groupName);
-                    }
-                }
-                return retValue;
+                string groupName = (string) dr[ColumnTriggerGroup];
+                retValue.Add(groupName);
             }
+
+            return retValue;
         }
 
         public virtual DbCommand PrepareCommand(ConnectionAndTransactionHolder cth, string commandText)
